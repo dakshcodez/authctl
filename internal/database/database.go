@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -13,6 +15,11 @@ import (
 )
 
 func Connect(cfg *config.Config, log *logger.Logger) (*sql.DB, error) {
+	if dir := filepath.Dir(cfg.DBPath); dir != "." {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return nil, fmt.Errorf("create database directory: %w", err)
+		}
+	}
 
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	if err != nil {
