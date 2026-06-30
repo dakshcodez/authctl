@@ -26,7 +26,10 @@ USER authctl
 
 WORKDIR /home/authctl
 
-# Persist the SQLite database across container restarts.
+# Pre-create the data directory as the authctl user so Docker seeds the named
+# volume with uid 1000 ownership instead of root when it is first initialised.
+RUN mkdir -p /home/authctl/.authctl
+
 VOLUME ["/home/authctl/.authctl"]
 
 COPY --from=builder /authctl /usr/local/bin/authctl
