@@ -97,6 +97,11 @@ func (h *Handler) userMessage(err error) string {
 }
 
 func (h *Handler) register(args []string) error {
+	if stored, err := h.store.Load(); err == nil {
+		warn(h.out, "You are logged in as %s. Please logout before registering a new account.", stored.Username)
+		return nil
+	}
+
 	var username string
 	var err error
 

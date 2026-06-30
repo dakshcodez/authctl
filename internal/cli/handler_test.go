@@ -182,6 +182,27 @@ func TestHandler_Register_ShortPassword(t *testing.T) {
 	}
 }
 
+func TestHandler_Register_WhileLoggedIn(t *testing.T) {
+	auth := newFakeAuth()
+	auth.users["alice"] = &models.User{ID: "u-1", Username: "alice"}
+
+	h, out, prompter, _ := newTestHandler(t, auth)
+	prompter.passwords = []string{"pass"}
+	h.Dispatch("login alice")
+	out.Reset()
+
+	prompter.lines = []string{"bob"}
+	prompter.passwords = []string{"password123", "password123"}
+	h.Dispatch("register")
+
+	if !strings.Contains(out.String(), "logged in as alice") {
+		t.Errorf("expected already-logged-in warning, got: %q", out.String())
+	}
+	if _, exists := auth.users["bob"]; exists {
+		t.Error("register must not create a new user while another session is active")
+	}
+}
+
 func TestHandler_Login(t *testing.T) {
 	auth := newFakeAuth()
 	auth.users["alice"] = &models.User{ID: "u-1", Username: "alice"}

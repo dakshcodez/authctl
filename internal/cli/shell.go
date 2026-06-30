@@ -88,6 +88,9 @@ func NewReadlinePrompter(rl *readline.Instance) Prompter {
 
 func (p *readlinePrompter) ReadPassword(prompt string) (string, error) {
 	b, err := p.rl.ReadPassword(prompt)
+	// readline resets the prompt to its config default after ReadPassword;
+	// restore the dynamically set prompt so the shell prompt stays correct.
+	p.rl.SetPrompt(p.currentPrompt)
 	return string(b), err
 }
 
