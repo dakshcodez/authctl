@@ -12,8 +12,8 @@ import (
 )
 
 // Handler dispatches CLI commands to the auth service.
-// It writes all output to out and reads passwords via prompter,
-// both of which are injectable for testing.
+// All output is written to out; password/line input comes through prompter.
+// Both are injectable for testing without a terminal.
 type Handler struct {
 	auth     service.AuthService
 	store    session.Store
@@ -21,14 +21,22 @@ type Handler struct {
 	prompter Prompter
 }
 
-// Prompter abstracts masked password input so it can be faked in tests.
+// Prompter abstracts terminal input and prompt control so both can be faked in tests.
 type Prompter interface {
 	ReadPassword(prompt string) (string, error)
 	ReadLine(prompt string) (string, error)
+	SetPrompt(prompt string)
 }
 
 func NewHandler(auth service.AuthService, store session.Store, out io.Writer, prompter Prompter) *Handler {
 	return &Handler{auth: auth, store: store, out: out, prompter: prompter}
+}
+
+// Init syncs the prompt to the stored session on startup.
+func (h *Handler) Init() {
+	if stored, err := h.store.Load(); err == nil {
+		h.prompter.SetPrompt(UserPrompt(stored.Username))
+	}
 }
 
 func (h *Handler) Dispatch(input string) {
@@ -53,11 +61,11 @@ func (h *Handler) Dispatch(input string) {
 	case "help":
 		h.help()
 	default:
-		fmt.Fprintf(h.out, "unknown command: %s (type 'help' for commands)\n", cmd)
+		warn(h.out, "unknown command: %s (type 'help' for commands)", cmd)
 	}
 
 	if err != nil {
-		fmt.Fprintf(h.out, "error: %s\n", h.userMessage(err))
+		fail(h.out, "error: %s", h.userMessage(err))
 	}
 }
 
@@ -119,11 +127,17 @@ func (h *Handler) register(args []string) error {
 		return err
 	}
 
-	fmt.Fprintf(h.out, "registered successfully as %s\n", user.Username)
+	success(h.out, "Registered successfully as %s", user.Username)
 	return nil
 }
 
 func (h *Handler) login(args []string) error {
+	// Prevent double login: check for an existing valid session first.
+	if stored, err := h.store.Load(); err == nil {
+		warn(h.out, "You are already logged in as %s. Please logout first.", stored.Username)
+		return nil
+	}
+
 	var username string
 	var err error
 
@@ -146,28 +160,32 @@ func (h *Handler) login(args []string) error {
 		return err
 	}
 
-	sess, err := h.auth.Login(context.Background(), username, password)
+	result, err := h.auth.Login(context.Background(), username, password)
 	if err != nil {
 		return err
 	}
 
 	stored := &session.StoredSession{
-		Token:     sess.Token,
+		Token:     result.Session.Token,
 		Username:  username,
-		ExpiresAt: sess.ExpiresAt,
+		ExpiresAt: result.Session.ExpiresAt,
 	}
 	if err := h.store.Save(stored); err != nil {
 		return fmt.Errorf("save session: %w", err)
 	}
 
-	fmt.Fprintf(h.out, "logged in as %s\n", username)
+	// Update prompt to reflect the authenticated user.
+	h.prompter.SetPrompt(UserPrompt(username))
+
+	// Show previous login time from the user snapshot (before UpdateLastLogin ran).
+	renderLoginPanel(h.out, result.User, result.Session.ExpiresAt)
 	return nil
 }
 
 func (h *Handler) logout() error {
 	stored, err := h.store.Load()
 	if errors.Is(err, session.ErrNoSession) {
-		fmt.Fprintln(h.out, "not logged in")
+		warn(h.out, "Not logged in.")
 		return nil
 	}
 	if err != nil {
@@ -182,40 +200,43 @@ func (h *Handler) logout() error {
 		return err
 	}
 
-	fmt.Fprintln(h.out, "logged out")
+	// Revert prompt to unauthenticated state.
+	h.prompter.SetPrompt(DefaultPrompt())
+
+	success(h.out, "Logged out.")
 	return nil
 }
 
 func (h *Handler) whoami() error {
 	stored, err := h.store.Load()
 	if errors.Is(err, session.ErrNoSession) {
-		fmt.Fprintln(h.out, "not logged in")
+		warn(h.out, "Not logged in.")
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 
-	_, err = h.auth.ValidateSession(context.Background(), stored.Token)
+	user, err := h.auth.ValidateSession(context.Background(), stored.Token)
 	if err != nil {
 		h.store.Clear()
-		fmt.Fprintln(h.out, "session expired — please login again")
+		h.prompter.SetPrompt(DefaultPrompt())
+		warn(h.out, "Session expired — please login again.")
 		return nil
 	}
 
-	fmt.Fprintf(h.out, "logged in as %s (session expires %s)\n",
-		stored.Username,
-		stored.ExpiresAt.Local().Format("2006-01-02 15:04:05"),
-	)
+	renderWhoamiPanel(h.out, user, stored.ExpiresAt)
 	return nil
 }
 
 func (h *Handler) help() {
-	fmt.Fprintln(h.out, `commands:
-  register [username]   create a new account
-  login [username]      log in to your account
-  logout                end your current session
-  whoami                show current session info
-  help                  show this help
-  exit                  quit`)
+	colorHeader.Fprintln(h.out, "Available commands:")
+	fmt.Fprintln(h.out, "")
+	fmt.Fprintln(h.out, "  register [username]   Create a new account")
+	fmt.Fprintln(h.out, "  login [username]      Log in to your account")
+	fmt.Fprintln(h.out, "  logout                End your current session")
+	fmt.Fprintln(h.out, "  whoami                Show current session info")
+	fmt.Fprintln(h.out, "  help                  Show this help")
+	fmt.Fprintln(h.out, "  exit                  Quit")
+	fmt.Fprintln(h.out, "")
 }

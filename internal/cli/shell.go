@@ -73,7 +73,8 @@ func NewShellFromReadline(rl *readline.Instance, handler *Handler) *Shell {
 
 // readlinePrompter adapts *readline.Instance to the Prompter interface.
 type readlinePrompter struct {
-	rl *readline.Instance
+	rl            *readline.Instance
+	currentPrompt string
 }
 
 func NewReadlinePrompter(rl *readline.Instance) Prompter {
@@ -86,7 +87,13 @@ func (p *readlinePrompter) ReadPassword(prompt string) (string, error) {
 }
 
 func (p *readlinePrompter) ReadLine(prompt string) (string, error) {
+	saved := p.currentPrompt
 	p.rl.SetPrompt(prompt)
-	defer p.rl.SetPrompt("authctl> ")
+	defer p.rl.SetPrompt(saved)
 	return p.rl.Readline()
+}
+
+func (p *readlinePrompter) SetPrompt(prompt string) {
+	p.currentPrompt = prompt
+	p.rl.SetPrompt(prompt)
 }
