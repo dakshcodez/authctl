@@ -10,3 +10,8 @@ require (
 )
 
 require github.com/google/uuid v1.6.0
+
+require (
+	github.com/chzyer/readline v1.5.1 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+)
