@@ -1,12 +1,17 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/chzyer/readline"
 )
+
+// ErrInterrupted is returned by prompter methods when the user presses ^C.
+// Dispatch handles it silently so the shell loop continues cleanly.
+var ErrInterrupted = errors.New("interrupted")
 
 // Shell wraps readline to provide history, tab completion, and masked input.
 type Shell struct {
@@ -25,6 +30,7 @@ func NewShell(handler *Handler, historyFile string) (*Shell, error) {
 			readline.PcItem("enable"),
 			readline.PcItem("disable"),
 		),
+		readline.PcItem("clear"),
 		readline.PcItem("help"),
 		readline.PcItem("exit"),
 	)
@@ -88,9 +94,12 @@ func NewReadlinePrompter(rl *readline.Instance) Prompter {
 
 func (p *readlinePrompter) ReadPassword(prompt string) (string, error) {
 	b, err := p.rl.ReadPassword(prompt)
-	// readline resets the prompt to its config default after ReadPassword;
+	// readline resets the terminal prompt to its config default after ReadPassword;
 	// restore the dynamically set prompt so the shell prompt stays correct.
 	p.rl.SetPrompt(p.currentPrompt)
+	if err == readline.ErrInterrupt {
+		return "", ErrInterrupted
+	}
 	return string(b), err
 }
 
@@ -98,7 +107,11 @@ func (p *readlinePrompter) ReadLine(prompt string) (string, error) {
 	saved := p.currentPrompt
 	p.rl.SetPrompt(prompt)
 	defer p.rl.SetPrompt(saved)
-	return p.rl.Readline()
+	line, err := p.rl.Readline()
+	if err == readline.ErrInterrupt {
+		return "", ErrInterrupted
+	}
+	return line, err
 }
 
 func (p *readlinePrompter) SetPrompt(prompt string) {

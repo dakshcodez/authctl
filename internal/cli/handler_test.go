@@ -108,9 +108,15 @@ type fakePrompter struct {
 	lines     []string
 	pwIdx     int
 	lineIdx   int
+	nextPwErr error // if set, next ReadPassword returns this error instead
 }
 
 func (p *fakePrompter) ReadPassword(_ string) (string, error) {
+	if p.nextPwErr != nil {
+		err := p.nextPwErr
+		p.nextPwErr = nil
+		return "", err
+	}
 	if p.pwIdx >= len(p.passwords) {
 		return "", errors.New("no more passwords")
 	}
@@ -319,12 +325,39 @@ func TestHandler_UnknownCommand(t *testing.T) {
 	}
 }
 
+func TestHandler_Interrupt_Swallowed(t *testing.T) {
+	h, out, prompter, _ := newTestHandler(t, newFakeAuth())
+	prompter.lines = []string{"alice"}
+	prompter.nextPwErr = cli.ErrInterrupted
+
+	h.Dispatch("register")
+
+	// Must not print "error: interrupted" — just a blank line.
+	if strings.Contains(out.String(), "error") {
+		t.Errorf("interrupt must be swallowed silently, got: %q", out.String())
+	}
+}
+
+func TestHandler_Clear(t *testing.T) {
+	h, out, _, _ := newTestHandler(t, newFakeAuth())
+
+	h.Dispatch("clear")
+
+	// Should contain the ANSI clear sequence, not an "unknown command" error.
+	if strings.Contains(out.String(), "unknown command") {
+		t.Errorf("clear must not produce unknown-command error")
+	}
+	if !strings.Contains(out.String(), "\033[H\033[2J") {
+		t.Errorf("clear must write ANSI clear sequence, got: %q", out.String())
+	}
+}
+
 func TestHandler_Help(t *testing.T) {
 	h, out, _, _ := newTestHandler(t, newFakeAuth())
 
 	h.Dispatch("help")
 
-	for _, cmd := range []string{"register", "login", "logout", "whoami", "mfa"} {
+	for _, cmd := range []string{"register", "login", "logout", "whoami", "mfa", "clear"} {
 		if !strings.Contains(out.String(), cmd) {
 			t.Errorf("help output missing %q", cmd)
 		}
