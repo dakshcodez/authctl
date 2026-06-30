@@ -7,6 +7,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/mdp/qrterminal/v3"
+
 	"github.com/dakshcodez/authctl/internal/service"
 	"github.com/dakshcodez/authctl/internal/session"
 )
@@ -320,10 +322,22 @@ func (h *Handler) mfaSetup(userID string) error {
 
 	colorHeader.Fprintln(h.out, "MFA Setup")
 	fmt.Fprintln(h.out, "")
-	fmt.Fprintf(h.out, "  Secret key:   %s\n", result.Secret)
+	colorDim.Fprintln(h.out, "  Scan with Google Authenticator, Authy, 1Password, etc.:")
 	fmt.Fprintln(h.out, "")
-	colorDim.Fprintln(h.out, "  Add this secret to your authenticator app (Google Authenticator,")
-	colorDim.Fprintln(h.out, "  Authy, 1Password, etc.) then run: mfa enable <6-digit code>")
+
+	qrterminal.GenerateWithConfig(result.ProviderURI, qrterminal.Config{
+		Level:      qrterminal.L,
+		Writer:     h.out,
+		HalfBlocks: true,
+		BlackChar:  qrterminal.BLACK_BLACK,
+		WhiteChar:  qrterminal.WHITE_WHITE,
+	})
+
+	fmt.Fprintln(h.out, "")
+	colorDim.Fprintf(h.out, "  Can't scan? Enter this key manually: ")
+	fmt.Fprintln(h.out, result.Secret)
+	fmt.Fprintln(h.out, "")
+	colorDim.Fprintln(h.out, "  Then run: mfa enable <6-digit code>")
 	fmt.Fprintln(h.out, "")
 	return nil
 }
