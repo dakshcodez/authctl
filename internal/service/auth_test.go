@@ -60,14 +60,14 @@ func TestAuthService_Login(t *testing.T) {
 
 	svc.Register(ctx, "alice", "correct-password")
 
-	session, err := svc.Login(ctx, "alice", "correct-password")
+	result, err := svc.Login(ctx, "alice", "correct-password")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
-	if session == nil || session.Token == "" {
+	if result == nil || result.Session.Token == "" {
 		t.Error("expected non-empty session token")
 	}
-	if !session.IsActive {
+	if !result.Session.IsActive {
 		t.Error("session must be active after login")
 	}
 }
@@ -139,9 +139,9 @@ func TestAuthService_ValidateSession(t *testing.T) {
 	ctx := context.Background()
 
 	svc.Register(ctx, "alice", "pass")
-	session, _ := svc.Login(ctx, "alice", "pass")
+	result, _ := svc.Login(ctx, "alice", "pass")
 
-	user, err := svc.ValidateSession(ctx, session.Token)
+	user, err := svc.ValidateSession(ctx, result.Session.Token)
 	if err != nil {
 		t.Fatalf("ValidateSession: %v", err)
 	}
@@ -164,13 +164,13 @@ func TestAuthService_Logout(t *testing.T) {
 	ctx := context.Background()
 
 	svc.Register(ctx, "alice", "pass")
-	session, _ := svc.Login(ctx, "alice", "pass")
+	result, _ := svc.Login(ctx, "alice", "pass")
 
-	if err := svc.Logout(ctx, session.Token); err != nil {
+	if err := svc.Logout(ctx, result.Session.Token); err != nil {
 		t.Fatalf("Logout: %v", err)
 	}
 
-	_, err := svc.ValidateSession(ctx, session.Token)
+	_, err := svc.ValidateSession(ctx, result.Session.Token)
 	if err != service.ErrSessionNotFound {
 		t.Errorf("expected ErrSessionNotFound after logout, got %v", err)
 	}
@@ -191,11 +191,11 @@ func TestAuthService_SessionToken_IsUnique(t *testing.T) {
 
 	svc.Register(ctx, "alice", "pass")
 
-	s1, _ := svc.Login(ctx, "alice", "pass")
-	svc.Logout(ctx, s1.Token)
-	s2, _ := svc.Login(ctx, "alice", "pass")
+	r1, _ := svc.Login(ctx, "alice", "pass")
+	svc.Logout(ctx, r1.Session.Token)
+	r2, _ := svc.Login(ctx, "alice", "pass")
 
-	if s1.Token == s2.Token {
+	if r1.Session.Token == r2.Session.Token {
 		t.Error("session tokens must not repeat")
 	}
 }

@@ -60,7 +60,7 @@ func (s *authService) Register(ctx context.Context, username, password string) (
 	return user, nil
 }
 
-func (s *authService) Login(ctx context.Context, username, password string) (*models.Session, error) {
+func (s *authService) Login(ctx context.Context, username, password string) (*LoginResult, error) {
 	user, err := s.users.GetByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -91,6 +91,9 @@ func (s *authService) Login(ctx context.Context, username, password string) (*mo
 		return nil, fmt.Errorf("reset failed attempts: %w", err)
 	}
 
+	// Capture the user snapshot (with old LastLoginAt) before overwriting it.
+	userSnapshot := *user
+
 	session, err := s.createSession(ctx, user.ID)
 	if err != nil {
 		return nil, err
@@ -102,7 +105,7 @@ func (s *authService) Login(ctx context.Context, username, password string) (*mo
 	}
 
 	s.log.Audit("user logged in", "user_id", user.ID, "session_id", session.ID)
-	return session, nil
+	return &LoginResult{Session: session, User: &userSnapshot}, nil
 }
 
 func (s *authService) Logout(ctx context.Context, token string) error {

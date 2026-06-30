@@ -43,23 +43,24 @@ func (f *fakeAuth) Register(_ context.Context, username, _ string) (*models.User
 	return u, nil
 }
 
-func (f *fakeAuth) Login(_ context.Context, username, _ string) (*models.Session, error) {
+func (f *fakeAuth) Login(_ context.Context, username, _ string) (*service.LoginResult, error) {
 	if f.nextErr != nil {
 		return nil, f.nextErr
 	}
-	if _, exists := f.users[username]; !exists {
+	u, exists := f.users[username]
+	if !exists {
 		return nil, service.ErrInvalidCredentials
 	}
 	s := &models.Session{
 		ID:        "s-1",
-		UserID:    "u-1",
+		UserID:    u.ID,
 		Token:     "fake-token",
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(30 * time.Minute),
 		IsActive:  true,
 	}
 	f.sessions["fake-token"] = s
-	return s, nil
+	return &service.LoginResult{Session: s, User: u}, nil
 }
 
 func (f *fakeAuth) Logout(_ context.Context, token string) error {
@@ -107,6 +108,8 @@ func (p *fakePrompter) ReadLine(_ string) (string, error) {
 	return val, nil
 }
 
+func (p *fakePrompter) SetPrompt(_ string) {} // no-op in tests
+
 func newTestHandler(t *testing.T, auth service.AuthService) (*cli.Handler, *bytes.Buffer, *fakePrompter, session.Store) {
 	t.Helper()
 	out := &bytes.Buffer{}
@@ -130,7 +133,7 @@ func TestHandler_Register(t *testing.T) {
 
 	h.Dispatch("register")
 
-	if !strings.Contains(out.String(), "registered successfully") {
+	if !strings.Contains(out.String(), "Registered successfully") {
 		t.Errorf("unexpected output: %q", out.String())
 	}
 }
@@ -168,7 +171,7 @@ func TestHandler_Login(t *testing.T) {
 
 	h.Dispatch("login alice")
 
-	if !strings.Contains(out.String(), "logged in as alice") {
+	if !strings.Contains(out.String(), "Login Successful") || !strings.Contains(out.String(), "alice") {
 		t.Errorf("unexpected output: %q", out.String())
 	}
 
@@ -203,11 +206,29 @@ func TestHandler_Logout(t *testing.T) {
 
 	h.Dispatch("logout")
 
-	if !strings.Contains(out.String(), "logged out") {
+	if !strings.Contains(out.String(), "Logged out") {
 		t.Errorf("unexpected output: %q", out.String())
 	}
 	if _, err := store.Load(); err != session.ErrNoSession {
 		t.Error("expected session to be cleared after logout")
+	}
+}
+
+func TestHandler_Login_AlreadyLoggedIn(t *testing.T) {
+	auth := newFakeAuth()
+	auth.users["alice"] = &models.User{ID: "u-1", Username: "alice"}
+
+	h, out, prompter, _ := newTestHandler(t, auth)
+	prompter.passwords = []string{"pass", "pass"}
+
+	h.Dispatch("login alice")
+	out.Reset()
+
+	// Second login attempt must be rejected without creating a new session.
+	h.Dispatch("login alice")
+
+	if !strings.Contains(out.String(), "already logged in") {
+		t.Errorf("expected already-logged-in warning, got: %q", out.String())
 	}
 }
 
@@ -216,7 +237,7 @@ func TestHandler_Logout_NotLoggedIn(t *testing.T) {
 
 	h.Dispatch("logout")
 
-	if !strings.Contains(out.String(), "not logged in") {
+	if !strings.Contains(out.String(), "Not logged in") {
 		t.Errorf("unexpected output: %q", out.String())
 	}
 }
@@ -226,7 +247,7 @@ func TestHandler_Whoami_NotLoggedIn(t *testing.T) {
 
 	h.Dispatch("whoami")
 
-	if !strings.Contains(out.String(), "not logged in") {
+	if !strings.Contains(out.String(), "Not logged in") {
 		t.Errorf("unexpected output: %q", out.String())
 	}
 }

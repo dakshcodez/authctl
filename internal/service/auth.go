@@ -16,11 +16,19 @@ var (
 	ErrInvalidMFACode     = errors.New("invalid MFA code")
 )
 
+// LoginResult carries the new session and a snapshot of the user taken before
+// last_login_at is updated. Callers can display the previous login time before
+// the current login overwrites it in the DB.
+type LoginResult struct {
+	Session *models.Session
+	User    *models.User // LastLoginAt = time of the login BEFORE this one
+}
+
 // AuthService is the single entry point for all authentication operations.
 // It enforces business rules; repositories handle persistence.
 type AuthService interface {
 	Register(ctx context.Context, username, password string) (*models.User, error)
-	Login(ctx context.Context, username, password string) (*models.Session, error)
+	Login(ctx context.Context, username, password string) (*LoginResult, error)
 	Logout(ctx context.Context, token string) error
 	ValidateSession(ctx context.Context, token string) (*models.User, error)
 }
