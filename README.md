@@ -138,17 +138,32 @@ go run ./cmd/authctl
 
 ## Commands
 
+**Before login**
+
 ```
 register [username]        Create a new account
-login [username]           Log in (prompts for TOTP code when MFA is enabled)
-logout                     End the current session
-whoami                     Show current session and account details
-mfa setup                  Generate a TOTP secret and render QR code
-mfa enable <code>          Verify first code and activate MFA
-mfa disable <code>         Deactivate MFA (requires a valid TOTP code)
-clear                      Clear the screen
-help                       Show this list
+login [username]           Log in (prompts for TOTP code when 2FA is enabled)
+help                       Show available commands
 exit                       Quit
+```
+
+**After login**
+
+```
+whoami                     Show current user and session details
+enable-2fa                 Set up and enable TOTP-based 2FA (renders QR code)
+disable-2fa                Disable 2FA (requires a valid TOTP code to confirm)
+logout                     End the current session
+clear                      Clear the screen
+help                       Show available commands
+```
+
+**Advanced 2FA (step-by-step)**
+
+```
+mfa setup                  Generate a TOTP secret and render QR code
+mfa enable <code>          Verify first code and activate 2FA
+mfa disable <code>         Deactivate 2FA (requires a valid TOTP code)
 ```
 
 ---
