@@ -25,5 +25,9 @@ func validate(cfg *Config) error {
 		return errors.New("invalid bcrypt cost")
 	}
 
+	if len(cfg.TOTPEncryptionKey) != 0 && len(cfg.TOTPEncryptionKey) != 32 {
+		return errors.New("TOTP_ENCRYPTION_KEY must be exactly 32 bytes (64 hex characters)")
+	}
+
 	return nil
 }

@@ -33,6 +33,5 @@ func Migrate(db *sql.DB, migrationsFS fs.FS, log *logger.Logger) error {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 
-	log.Info("database migrations applied")
 	return nil
 }

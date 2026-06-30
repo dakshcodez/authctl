@@ -43,7 +43,7 @@ func Connect(cfg *config.Config, log *logger.Logger) (*sql.DB, error) {
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(0)
 
-	log.Info("database connected")
+	_ = log // reserved for error-level events; startup message is owned by main
 
 	return db, nil
 }

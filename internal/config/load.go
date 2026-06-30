@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/hex"
+	"fmt"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -50,6 +52,14 @@ func Load() (*Config, error) {
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if raw := getString("TOTP_ENCRYPTION_KEY", ""); raw != "" {
+		key, err := hex.DecodeString(raw)
+		if err != nil {
+			return nil, fmt.Errorf("TOTP_ENCRYPTION_KEY must be a valid hex string: %w", err)
+		}
+		cfg.TOTPEncryptionKey = key
 	}
 
 	if err := validate(cfg); err != nil {
