@@ -1,0 +1,22 @@
+services:
+  authctl:
+    build: .
+    image: authctl:latest
+    # Run interactively so the readline shell gets a TTY.
+    stdin_open: true
+    tty: true
+    volumes:
+      # Persist the SQLite database and session file between runs.
+      - authctl-data:/home/authctl/.authctl
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: info
+      # DB_PATH defaults to ~/.authctl/authctl.db inside the container.
+      # SESSION_TIMEOUT: 24h
+      # MAX_LOGIN_ATTEMPTS: 5
+      # LOCKOUT_DURATION: 15m
+      # BCRYPT_COST: 12
+      # TOTP_ENCRYPTION_KEY: <64 hex chars — generate with: openssl rand -hex 32>
+
+volumes:
+  authctl-data:
