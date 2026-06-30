@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	rl "github.com/chzyer/readline"
+
 	"github.com/dakshcodez/authctl/internal/cli"
 	"github.com/dakshcodez/authctl/internal/config"
 	"github.com/dakshcodez/authctl/internal/database"
@@ -13,11 +15,11 @@ import (
 	"github.com/dakshcodez/authctl/internal/service"
 	"github.com/dakshcodez/authctl/internal/session"
 	"github.com/dakshcodez/authctl/migrations"
-
-	rl "github.com/chzyer/readline"
 )
 
 func main() {
+	cli.PrintBanner(os.Stdout)
+
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("load config", "error", err)
@@ -26,17 +28,21 @@ func main() {
 
 	log := logger.New(cfg)
 
+	cli.PrintStartupStatus(os.Stdout, "Initializing...")
+
 	db, err := database.Connect(cfg, log)
 	if err != nil {
 		log.Error("connect to database", "error", err)
 		os.Exit(1)
 	}
 	defer db.Close()
+	cli.PrintStartupStatus(os.Stdout, "Database connected.")
 
 	if err := database.Migrate(db, migrations.FS, log); err != nil {
 		log.Error("run migrations", "error", err)
 		os.Exit(1)
 	}
+	cli.PrintStartupStatus(os.Stdout, "Database migrations applied.")
 
 	users := repository.NewUserRepository(db)
 	sessions := repository.NewSessionRepository(db)
@@ -52,7 +58,7 @@ func main() {
 	historyFile := filepath.Join(filepath.Dir(sessionPath), "history")
 
 	readline, err := rl.NewEx(&rl.Config{
-		Prompt:          "authctl> ",
+		Prompt:          cli.DefaultPrompt(),
 		HistoryFile:     historyFile,
 		AutoComplete:    buildCompleter(),
 		InterruptPrompt: "^C",
@@ -66,8 +72,13 @@ func main() {
 
 	prompter := cli.NewReadlinePrompter(readline)
 	handler := cli.NewHandler(auth, store, os.Stdout, prompter)
-	shell := cli.NewShellFromReadline(readline, handler)
 
+	// Sync prompt to any session persisted from a previous run.
+	handler.Init()
+
+	cli.PrintReady(os.Stdout)
+
+	shell := cli.NewShellFromReadline(readline, handler)
 	if err := shell.Run(); err != nil {
 		log.Error("shell error", "error", err)
 		os.Exit(1)
