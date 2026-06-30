@@ -112,103 +112,27 @@ go run ./cmd/authctl
 
 ---
 
-## Terminal preview
+## Screenshots
 
 **Startup**
 
-```
-  ██████╗ ██╗   ██╗████████╗██╗  ██╗ ██████╗████████╗██╗
- ██╔══██╗██║   ██║╚══██╔══╝██║  ██║██╔════╝╚══██╔══╝██║
- ███████║██║   ██║   ██║   ███████║██║        ██║   ██║
- ██╔══██║██║   ██║   ██║   ██╔══██║██║        ██║   ██║
- ██║  ██║╚██████╔╝   ██║   ██║  ██║╚██████╗   ██║   ███████╗
- ╚═╝  ╚═╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝ ╚═════╝   ╚═╝   ╚══════╝
+![startup](docs/screenshots/01-startup.svg)
 
-  Authentication Control Utility
-  Version 1.0.0
+**Register**
 
-  Initializing...
-  Database connected.
-  Database migrations applied.
+![register](docs/screenshots/02-register.svg)
 
-  Type 'help' to see available commands.
+**Login**
 
-authctl>
-```
+![login](docs/screenshots/03-login.svg)
 
-**Register and login**
+**MFA setup — QR code rendered directly in the terminal**
 
-```
-authctl> register
-Username: alice
-Password:
-Confirm password:
-✓ Registered successfully as alice
+![mfa setup](docs/screenshots/04-mfa-setup.svg)
 
-authctl> login alice
-Password:
-────────────────────────────────────────
-Login Successful
+**Whoami**
 
-User Details
-
-  Username            : alice
-  Registered          : 2026-06-30 14:22
-  MFA                 : Disabled
-  Last Login          : Never
-  Session Expires     : 2026-07-01 14:22
-
-────────────────────────────────────────
-authctl(alice)>
-```
-
-**MFA setup**
-
-```
-authctl(alice)> mfa setup
-MFA Setup
-
-  Scan with Google Authenticator, Authy, 1Password, etc.:
-
-  ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-  █ ▄▄▄▄▄ █▀▄▄▀▀▀▄▀▄▀▄▄ ▄ █ ▄▄▄▄▄ █
-  █ █   █ █▀▄▄▀▀▄▀▀ ██▀█▄ █ █   █ █
-  █ █▄▄▄█ █ ▄▀█ ▄█▀ ▀ ▀▄▀ █ █▄▄▄█ █
-  █▄▄▄▄▄▄▄█ ▄ █▄▄ ▄▀█ ▄ █▄█▄▄▄▄▄▄▄█
-  █ ▀▄▄▀▀▄▄▀ ▄▀▄▀▄▀▄ ▀▄█▄▀▄▀ ▄▄▀▀ █
-  █ ▀▄ ▄▀▄ ▀▄▄▀▀ ██▀▄█▀▄▀ ▄▀▄ ▀▀▄ █
-  █▄█▄██▄▄█▄▄▄▀▄▄█▄▄█▄▄▄▀▄▄▄█▄▄██▄█
-  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-
-  Can't scan? Enter this key manually: JBSWY3DPEHPK3PXP
-
-  Then run: mfa enable <6-digit code>
-
-authctl(alice)> mfa enable 482910
-✓ MFA enabled. Your account now requires a TOTP code at login.
-```
-
-**Login with MFA**
-
-```
-authctl> login alice
-Password:
-! MFA is enabled on this account.
-TOTP code: 482910
-────────────────────────────────────────
-Login Successful
-
-User Details
-
-  Username            : alice
-  Registered          : 2026-06-30 14:22
-  MFA                 : Enabled
-  Last Login          : 2026-06-30 14:22
-  Session Expires     : 2026-07-01 15:08
-
-────────────────────────────────────────
-authctl(alice)>
-```
+![whoami](docs/screenshots/05-whoami.svg)
 
 ---
 
