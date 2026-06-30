@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/dakshcodez/authctl/internal/config"
@@ -185,6 +186,137 @@ func (s *authService) createSession(ctx context.Context, userID string) (*models
 	}
 
 	return session, nil
+}
+
+func (s *authService) SetupMFA(ctx context.Context, userID string) (*MFASetupResult, error) {
+	if len(s.cfg.TOTPEncryptionKey) == 0 {
+		return nil, ErrMFAUnavailable
+	}
+
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup user: %w", err)
+	}
+	if user.MFAEnabled {
+		return nil, ErrMFAAlreadyEnabled
+	}
+
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      "authctl",
+		AccountName: user.Username,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("generate TOTP key: %w", err)
+	}
+
+	encrypted, err := encryptTOTPSecret(s.cfg.TOTPEncryptionKey, key.Secret())
+	if err != nil {
+		return nil, fmt.Errorf("encrypt TOTP secret: %w", err)
+	}
+
+	if err := s.users.StoreTOTPSecret(ctx, userID, encrypted); err != nil {
+		return nil, fmt.Errorf("store TOTP secret: %w", err)
+	}
+
+	s.log.Audit("MFA setup initiated", "user_id", userID)
+	return &MFASetupResult{
+		Secret:      key.Secret(),
+		ProviderURI: key.URL(),
+	}, nil
+}
+
+func (s *authService) VerifyAndEnableMFA(ctx context.Context, userID, code string) error {
+	if len(s.cfg.TOTPEncryptionKey) == 0 {
+		return ErrMFAUnavailable
+	}
+
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("lookup user: %w", err)
+	}
+	if user.MFAEnabled {
+		return ErrMFAAlreadyEnabled
+	}
+	if user.EncryptedTOTPSecret == nil {
+		return ErrTOTPNotConfigured
+	}
+
+	secret, err := decryptTOTPSecret(s.cfg.TOTPEncryptionKey, *user.EncryptedTOTPSecret)
+	if err != nil {
+		return fmt.Errorf("decrypt TOTP secret: %w", err)
+	}
+
+	if !totp.Validate(code, secret) {
+		s.log.Security("MFA enable failed: invalid code", "user_id", userID)
+		return ErrInvalidMFACode
+	}
+
+	if err := s.users.ActivateMFA(ctx, userID); err != nil {
+		return fmt.Errorf("activate MFA: %w", err)
+	}
+
+	s.log.Audit("MFA enabled", "user_id", userID)
+	return nil
+}
+
+func (s *authService) DisableMFA(ctx context.Context, userID, code string) error {
+	if len(s.cfg.TOTPEncryptionKey) == 0 {
+		return ErrMFAUnavailable
+	}
+
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("lookup user: %w", err)
+	}
+	if !user.MFAEnabled {
+		return ErrMFANotEnabled
+	}
+	if user.EncryptedTOTPSecret == nil {
+		return ErrTOTPNotConfigured
+	}
+
+	secret, err := decryptTOTPSecret(s.cfg.TOTPEncryptionKey, *user.EncryptedTOTPSecret)
+	if err != nil {
+		return fmt.Errorf("decrypt TOTP secret: %w", err)
+	}
+
+	if !totp.Validate(code, secret) {
+		s.log.Security("MFA disable failed: invalid code", "user_id", userID)
+		return ErrInvalidMFACode
+	}
+
+	if err := s.users.DisableMFA(ctx, userID); err != nil {
+		return fmt.Errorf("disable MFA: %w", err)
+	}
+
+	s.log.Audit("MFA disabled", "user_id", userID)
+	return nil
+}
+
+func (s *authService) VerifyMFALogin(ctx context.Context, userID, code string) error {
+	if len(s.cfg.TOTPEncryptionKey) == 0 {
+		return ErrMFAUnavailable
+	}
+
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("lookup user: %w", err)
+	}
+	if !user.MFAEnabled || user.EncryptedTOTPSecret == nil {
+		return ErrMFANotEnabled
+	}
+
+	secret, err := decryptTOTPSecret(s.cfg.TOTPEncryptionKey, *user.EncryptedTOTPSecret)
+	if err != nil {
+		return fmt.Errorf("decrypt TOTP secret: %w", err)
+	}
+
+	if !totp.Validate(code, secret) {
+		s.log.Security("MFA login failed: invalid code", "user_id", userID)
+		return ErrInvalidMFACode
+	}
+
+	return nil
 }
 
 // generateToken returns 32 cryptographically random bytes as a hex string.

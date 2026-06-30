@@ -82,6 +82,22 @@ func (f *fakeAuth) ValidateSession(_ context.Context, token string) (*models.Use
 	return &models.User{ID: "u-1", Username: "alice"}, nil
 }
 
+func (f *fakeAuth) SetupMFA(_ context.Context, _ string) (*service.MFASetupResult, error) {
+	return nil, service.ErrMFAUnavailable
+}
+
+func (f *fakeAuth) VerifyAndEnableMFA(_ context.Context, _, _ string) error {
+	return service.ErrMFAUnavailable
+}
+
+func (f *fakeAuth) DisableMFA(_ context.Context, _, _ string) error {
+	return service.ErrMFAUnavailable
+}
+
+func (f *fakeAuth) VerifyMFALogin(_ context.Context, _, _ string) error {
+	return service.ErrMFAUnavailable
+}
+
 // fakePrompter returns preset values for password and line prompts.
 type fakePrompter struct {
 	passwords []string
