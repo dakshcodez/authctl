@@ -60,6 +60,8 @@ func (h *Handler) Dispatch(input string) {
 		err = h.whoami()
 	case "mfa":
 		err = h.mfa(args)
+	case "clear":
+		fmt.Fprint(h.out, "\033[H\033[2J")
 	case "help":
 		h.help()
 	default:
@@ -67,6 +69,10 @@ func (h *Handler) Dispatch(input string) {
 	}
 
 	if err != nil {
+		if errors.Is(err, ErrInterrupted) {
+			fmt.Fprintln(h.out) // newline after ^C so the next prompt starts clean
+			return
+		}
 		fail(h.out, "error: %s", h.userMessage(err))
 	}
 }
@@ -97,6 +103,11 @@ func (h *Handler) userMessage(err error) string {
 }
 
 func (h *Handler) register(args []string) error {
+	if stored, err := h.store.Load(); err == nil {
+		warn(h.out, "You are logged in as %s. Please logout before registering a new account.", stored.Username)
+		return nil
+	}
+
 	var username string
 	var err error
 
@@ -343,6 +354,7 @@ func (h *Handler) help() {
 	fmt.Fprintln(h.out, "  mfa setup                  Generate a TOTP secret")
 	fmt.Fprintln(h.out, "  mfa enable <code>          Activate MFA after setup")
 	fmt.Fprintln(h.out, "  mfa disable <code>         Deactivate MFA")
+	fmt.Fprintln(h.out, "  clear                      Clear the screen")
 	fmt.Fprintln(h.out, "  help                       Show this help")
 	fmt.Fprintln(h.out, "  exit                       Quit")
 	fmt.Fprintln(h.out, "")
