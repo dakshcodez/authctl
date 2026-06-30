@@ -21,6 +21,13 @@ type UserRepository interface {
 	ResetFailedAttempts(ctx context.Context, id string) error
 	UpdateLastLogin(ctx context.Context, id string, at time.Time) error
 	EnableMFA(ctx context.Context, id string, encryptedSecret string) error
+	// StoreTOTPSecret stores an encrypted TOTP secret without activating MFA.
+	// Call ActivateMFA after the user verifies the first code.
+	StoreTOTPSecret(ctx context.Context, id string, encryptedSecret string) error
+	// ActivateMFA sets mfa_enabled=1 without changing the stored secret.
+	ActivateMFA(ctx context.Context, id string) error
+	// DisableMFA clears mfa_enabled and wipes the stored secret.
+	DisableMFA(ctx context.Context, id string) error
 }
 
 type sqliteUserRepository struct {
@@ -94,6 +101,21 @@ func (r *sqliteUserRepository) UpdateLastLogin(ctx context.Context, id string, a
 func (r *sqliteUserRepository) EnableMFA(ctx context.Context, id string, encryptedSecret string) error {
 	const q = `UPDATE users SET mfa_enabled = 1, encrypted_totp_secret = ? WHERE id = ?`
 	return execExpectOne(ctx, r.db, q, encryptedSecret, id)
+}
+
+func (r *sqliteUserRepository) StoreTOTPSecret(ctx context.Context, id string, encryptedSecret string) error {
+	const q = `UPDATE users SET encrypted_totp_secret = ? WHERE id = ?`
+	return execExpectOne(ctx, r.db, q, encryptedSecret, id)
+}
+
+func (r *sqliteUserRepository) ActivateMFA(ctx context.Context, id string) error {
+	const q = `UPDATE users SET mfa_enabled = 1 WHERE id = ?`
+	return execExpectOne(ctx, r.db, q, id)
+}
+
+func (r *sqliteUserRepository) DisableMFA(ctx context.Context, id string) error {
+	const q = `UPDATE users SET mfa_enabled = 0, encrypted_totp_secret = NULL WHERE id = ?`
+	return execExpectOne(ctx, r.db, q, id)
 }
 
 // scanUser maps a sql.Row into a User, handling all nullable fields.

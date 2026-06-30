@@ -82,6 +82,26 @@ func (f *fakeAuth) ValidateSession(_ context.Context, token string) (*models.Use
 	return &models.User{ID: "u-1", Username: "alice"}, nil
 }
 
+func (f *fakeAuth) LoginWithMFA(_ context.Context, _, _, _ string) (*service.LoginResult, error) {
+	return nil, service.ErrMFAUnavailable
+}
+
+func (f *fakeAuth) SetupMFA(_ context.Context, _ string) (*service.MFASetupResult, error) {
+	return nil, service.ErrMFAUnavailable
+}
+
+func (f *fakeAuth) VerifyAndEnableMFA(_ context.Context, _, _ string) error {
+	return service.ErrMFAUnavailable
+}
+
+func (f *fakeAuth) DisableMFA(_ context.Context, _, _ string) error {
+	return service.ErrMFAUnavailable
+}
+
+func (f *fakeAuth) VerifyMFALogin(_ context.Context, _, _ string) error {
+	return service.ErrMFAUnavailable
+}
+
 // fakePrompter returns preset values for password and line prompts.
 type fakePrompter struct {
 	passwords []string
@@ -283,9 +303,78 @@ func TestHandler_Help(t *testing.T) {
 
 	h.Dispatch("help")
 
-	for _, cmd := range []string{"register", "login", "logout", "whoami"} {
+	for _, cmd := range []string{"register", "login", "logout", "whoami", "mfa"} {
 		if !strings.Contains(out.String(), cmd) {
 			t.Errorf("help output missing %q", cmd)
 		}
+	}
+}
+
+func TestHandler_MFA_NotLoggedIn(t *testing.T) {
+	h, out, _, _ := newTestHandler(t, newFakeAuth())
+
+	h.Dispatch("mfa setup")
+
+	if !strings.Contains(out.String(), "Not logged in") {
+		t.Errorf("expected not-logged-in warning, got: %q", out.String())
+	}
+}
+
+func TestHandler_MFA_Unavailable(t *testing.T) {
+	// fakeAuth returns ErrMFAUnavailable for all MFA methods.
+	auth := newFakeAuth()
+	auth.users["alice"] = &models.User{ID: "u-1", Username: "alice"}
+
+	h, out, prompter, _ := newTestHandler(t, auth)
+	prompter.passwords = []string{"pass"}
+	h.Dispatch("login alice")
+	out.Reset()
+
+	h.Dispatch("mfa setup")
+
+	if !strings.Contains(out.String(), "MFA is unavailable") {
+		t.Errorf("expected unavailable message, got: %q", out.String())
+	}
+}
+
+func TestHandler_MFA_NoSubcommand(t *testing.T) {
+	h, out, _, _ := newTestHandler(t, newFakeAuth())
+
+	h.Dispatch("mfa")
+
+	if !strings.Contains(out.String(), "Usage") {
+		t.Errorf("expected usage hint, got: %q", out.String())
+	}
+}
+
+func TestHandler_MFA_Enable_MissingCode(t *testing.T) {
+	auth := newFakeAuth()
+	auth.users["alice"] = &models.User{ID: "u-1", Username: "alice"}
+
+	h, out, prompter, _ := newTestHandler(t, auth)
+	prompter.passwords = []string{"pass"}
+	h.Dispatch("login alice")
+	out.Reset()
+
+	h.Dispatch("mfa enable")
+
+	if !strings.Contains(out.String(), "Usage") {
+		t.Errorf("expected usage hint, got: %q", out.String())
+	}
+}
+
+func TestHandler_MFA_Disable_MissingCode(t *testing.T) {
+	auth := newFakeAuth()
+	auth.users["alice"] = &models.User{ID: "u-1", Username: "alice"}
+
+	h, out, prompter, _ := newTestHandler(t, auth)
+	prompter.passwords = []string{"pass"}
+	h.Dispatch("login alice")
+	out.Reset()
+
+	h.Dispatch("mfa disable")
+
+	if !strings.Contains(out.String(), "Usage") {
+		t.Errorf("expected usage hint, got: %q", out.String())
 	}
 }

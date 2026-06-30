@@ -20,6 +20,11 @@ func NewShell(handler *Handler, historyFile string) (*Shell, error) {
 		readline.PcItem("login"),
 		readline.PcItem("logout"),
 		readline.PcItem("whoami"),
+		readline.PcItem("mfa",
+			readline.PcItem("setup"),
+			readline.PcItem("enable"),
+			readline.PcItem("disable"),
+		),
 		readline.PcItem("help"),
 		readline.PcItem("exit"),
 	)
