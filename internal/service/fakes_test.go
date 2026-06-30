@@ -103,6 +103,37 @@ func (r *fakeUserRepo) EnableMFA(_ context.Context, id string, secret string) er
 	return nil
 }
 
+func (r *fakeUserRepo) StoreTOTPSecret(_ context.Context, id string, secret string) error {
+	u, ok := r.byID[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	u.EncryptedTOTPSecret = &secret
+	r.byUsername[u.Username] = u
+	return nil
+}
+
+func (r *fakeUserRepo) ActivateMFA(_ context.Context, id string) error {
+	u, ok := r.byID[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	u.MFAEnabled = true
+	r.byUsername[u.Username] = u
+	return nil
+}
+
+func (r *fakeUserRepo) DisableMFA(_ context.Context, id string) error {
+	u, ok := r.byID[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	u.MFAEnabled = false
+	u.EncryptedTOTPSecret = nil
+	r.byUsername[u.Username] = u
+	return nil
+}
+
 // fakeSessionRepo is an in-memory SessionRepository for testing.
 type fakeSessionRepo struct {
 	byID    map[string]*models.Session
