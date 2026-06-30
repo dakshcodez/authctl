@@ -58,6 +58,8 @@ func (h *Handler) Dispatch(input string) {
 		err = h.logout()
 	case "whoami":
 		err = h.whoami()
+	case "mfa":
+		err = h.mfa(args)
 	case "help":
 		h.help()
 	default:
@@ -79,8 +81,16 @@ func (h *Handler) userMessage(err error) string {
 		return "username already taken"
 	case errors.Is(err, service.ErrSessionNotFound):
 		return "session not found or expired — please login again"
-	case errors.Is(err, service.ErrMFARequired):
-		return "MFA is enabled on this account (TOTP support coming in a future version)"
+	case errors.Is(err, service.ErrInvalidMFACode):
+		return "invalid MFA code"
+	case errors.Is(err, service.ErrMFANotEnabled):
+		return "MFA is not enabled on this account"
+	case errors.Is(err, service.ErrMFAAlreadyEnabled):
+		return "MFA is already enabled on this account"
+	case errors.Is(err, service.ErrTOTPNotConfigured):
+		return "run 'mfa setup' before enabling MFA"
+	case errors.Is(err, service.ErrMFAUnavailable):
+		return "MFA is unavailable — server is not configured with a TOTP encryption key"
 	default:
 		return err.Error()
 	}
@@ -161,10 +171,28 @@ func (h *Handler) login(args []string) error {
 	}
 
 	result, err := h.auth.Login(context.Background(), username, password)
+	if errors.Is(err, service.ErrMFARequired) {
+		result, err = h.loginMFAStep(username, password)
+	}
 	if err != nil {
 		return err
 	}
 
+	return h.completeLogin(username, result)
+}
+
+// loginMFAStep prompts for a TOTP code and calls LoginWithMFA.
+func (h *Handler) loginMFAStep(username, password string) (*service.LoginResult, error) {
+	warn(h.out, "MFA is enabled on this account.")
+	code, err := h.prompter.ReadLine("TOTP code: ")
+	if err != nil {
+		return nil, err
+	}
+	return h.auth.LoginWithMFA(context.Background(), username, password, strings.TrimSpace(code))
+}
+
+// completeLogin saves the session and updates the prompt after a successful login.
+func (h *Handler) completeLogin(username string, result *service.LoginResult) error {
 	stored := &session.StoredSession{
 		Token:     result.Session.Token,
 		Username:  username,
@@ -229,14 +257,93 @@ func (h *Handler) whoami() error {
 	return nil
 }
 
+func (h *Handler) mfa(args []string) error {
+	if len(args) == 0 {
+		warn(h.out, "Usage: mfa <setup|enable <code>|disable <code>>")
+		return nil
+	}
+
+	stored, err := h.store.Load()
+	if errors.Is(err, session.ErrNoSession) {
+		warn(h.out, "Not logged in.")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	user, err := h.auth.ValidateSession(context.Background(), stored.Token)
+	if err != nil {
+		h.store.Clear()
+		h.prompter.SetPrompt(DefaultPrompt())
+		warn(h.out, "Session expired — please login again.")
+		return nil
+	}
+
+	switch args[0] {
+	case "setup":
+		return h.mfaSetup(user.ID)
+	case "enable":
+		if len(args) < 2 {
+			warn(h.out, "Usage: mfa enable <6-digit code>")
+			return nil
+		}
+		return h.mfaEnable(user.ID, args[1])
+	case "disable":
+		if len(args) < 2 {
+			warn(h.out, "Usage: mfa disable <6-digit code>")
+			return nil
+		}
+		return h.mfaDisable(user.ID, args[1])
+	default:
+		warn(h.out, "Unknown mfa subcommand: %s (setup, enable, disable)", args[0])
+		return nil
+	}
+}
+
+func (h *Handler) mfaSetup(userID string) error {
+	result, err := h.auth.SetupMFA(context.Background(), userID)
+	if err != nil {
+		return err
+	}
+
+	colorHeader.Fprintln(h.out, "MFA Setup")
+	fmt.Fprintln(h.out, "")
+	fmt.Fprintf(h.out, "  Secret key:   %s\n", result.Secret)
+	fmt.Fprintln(h.out, "")
+	colorDim.Fprintln(h.out, "  Add this secret to your authenticator app (Google Authenticator,")
+	colorDim.Fprintln(h.out, "  Authy, 1Password, etc.) then run: mfa enable <6-digit code>")
+	fmt.Fprintln(h.out, "")
+	return nil
+}
+
+func (h *Handler) mfaEnable(userID, code string) error {
+	if err := h.auth.VerifyAndEnableMFA(context.Background(), userID, code); err != nil {
+		return err
+	}
+	success(h.out, "MFA enabled. Your account now requires a TOTP code at login.")
+	return nil
+}
+
+func (h *Handler) mfaDisable(userID, code string) error {
+	if err := h.auth.DisableMFA(context.Background(), userID, code); err != nil {
+		return err
+	}
+	success(h.out, "MFA disabled.")
+	return nil
+}
+
 func (h *Handler) help() {
 	colorHeader.Fprintln(h.out, "Available commands:")
 	fmt.Fprintln(h.out, "")
-	fmt.Fprintln(h.out, "  register [username]   Create a new account")
-	fmt.Fprintln(h.out, "  login [username]      Log in to your account")
-	fmt.Fprintln(h.out, "  logout                End your current session")
-	fmt.Fprintln(h.out, "  whoami                Show current session info")
-	fmt.Fprintln(h.out, "  help                  Show this help")
-	fmt.Fprintln(h.out, "  exit                  Quit")
+	fmt.Fprintln(h.out, "  register [username]        Create a new account")
+	fmt.Fprintln(h.out, "  login [username]           Log in to your account")
+	fmt.Fprintln(h.out, "  logout                     End your current session")
+	fmt.Fprintln(h.out, "  whoami                     Show current session info")
+	fmt.Fprintln(h.out, "  mfa setup                  Generate a TOTP secret")
+	fmt.Fprintln(h.out, "  mfa enable <code>          Activate MFA after setup")
+	fmt.Fprintln(h.out, "  mfa disable <code>         Deactivate MFA")
+	fmt.Fprintln(h.out, "  help                       Show this help")
+	fmt.Fprintln(h.out, "  exit                       Quit")
 	fmt.Fprintln(h.out, "")
 }

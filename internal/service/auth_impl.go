@@ -188,6 +188,62 @@ func (s *authService) createSession(ctx context.Context, userID string) (*models
 	return session, nil
 }
 
+func (s *authService) LoginWithMFA(ctx context.Context, username, password, code string) (*LoginResult, error) {
+	user, err := s.users.GetByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			bcrypt.CompareHashAndPassword([]byte("$2a$12$dummyhashfortimingnoop00000000000000000000000000000000"), []byte(password)) //nolint:errcheck
+			s.log.Security("MFA login failed: unknown username", "username", username)
+			return nil, ErrInvalidCredentials
+		}
+		return nil, fmt.Errorf("lookup user: %w", err)
+	}
+
+	if user.IsLocked() {
+		s.log.Security("MFA login blocked: account locked", "user_id", user.ID)
+		return nil, ErrAccountLocked
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		s.handleFailedAttempt(ctx, user)
+		s.log.Security("MFA login failed: wrong password", "user_id", user.ID)
+		return nil, ErrInvalidCredentials
+	}
+
+	if !user.MFAEnabled || user.EncryptedTOTPSecret == nil {
+		return nil, ErrMFANotEnabled
+	}
+
+	secret, err := decryptTOTPSecret(s.cfg.TOTPEncryptionKey, *user.EncryptedTOTPSecret)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt TOTP secret: %w", err)
+	}
+
+	if !totp.Validate(code, secret) {
+		s.log.Security("MFA login failed: invalid TOTP code", "user_id", user.ID)
+		return nil, ErrInvalidMFACode
+	}
+
+	if err := s.users.ResetFailedAttempts(ctx, user.ID); err != nil {
+		return nil, fmt.Errorf("reset failed attempts: %w", err)
+	}
+
+	userSnapshot := *user
+
+	session, err := s.createSession(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	if err := s.users.UpdateLastLogin(ctx, user.ID, now); err != nil {
+		return nil, fmt.Errorf("update last login: %w", err)
+	}
+
+	s.log.Audit("user logged in via MFA", "user_id", user.ID, "session_id", session.ID)
+	return &LoginResult{Session: session, User: &userSnapshot}, nil
+}
+
 func (s *authService) SetupMFA(ctx context.Context, userID string) (*MFASetupResult, error) {
 	if len(s.cfg.TOTPEncryptionKey) == 0 {
 		return nil, ErrMFAUnavailable

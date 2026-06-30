@@ -43,6 +43,10 @@ type AuthService interface {
 	Logout(ctx context.Context, token string) error
 	ValidateSession(ctx context.Context, token string) (*models.User, error)
 
+	// LoginWithMFA is the second step when Login returns ErrMFARequired.
+	// It re-verifies credentials then validates the TOTP code before creating a session.
+	LoginWithMFA(ctx context.Context, username, password, code string) (*LoginResult, error)
+
 	// MFA lifecycle — all three require TOTP_ENCRYPTION_KEY to be set.
 	// SetupMFA generates a TOTP secret and stores it (encrypted) without activating MFA.
 	SetupMFA(ctx context.Context, userID string) (*MFASetupResult, error)
