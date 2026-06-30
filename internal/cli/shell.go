@@ -65,6 +65,12 @@ func (s *Shell) Run() error {
 	}
 }
 
+// NewShellFromReadline creates a Shell from an existing readline instance.
+// Use this when the caller needs to configure readline before handing it off.
+func NewShellFromReadline(rl *readline.Instance, handler *Handler) *Shell {
+	return &Shell{rl: rl, handler: handler}
+}
+
 // readlinePrompter adapts *readline.Instance to the Prompter interface.
 type readlinePrompter struct {
 	rl *readline.Instance
