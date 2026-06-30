@@ -62,6 +62,10 @@ func (h *Handler) Dispatch(input string) {
 		err = h.whoami()
 	case "mfa":
 		err = h.mfa(args)
+	case "enable-2fa":
+		err = h.enable2fa()
+	case "disable-2fa":
+		err = h.disable2fa()
 	case "clear":
 		fmt.Fprint(h.out, "\033[H\033[2J")
 	case "help":
@@ -314,6 +318,95 @@ func (h *Handler) mfa(args []string) error {
 	}
 }
 
+// enable2fa is the single-command path for the spec requirement:
+// it runs setup (generates secret + shows QR code) then immediately
+// prompts for the first TOTP code to verify and activate MFA.
+func (h *Handler) enable2fa() error {
+	stored, err := h.store.Load()
+	if errors.Is(err, session.ErrNoSession) {
+		warn(h.out, "Not logged in.")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	user, err := h.auth.ValidateSession(context.Background(), stored.Token)
+	if err != nil {
+		h.store.Clear()
+		h.prompter.SetPrompt(DefaultPrompt())
+		warn(h.out, "Session expired — please login again.")
+		return nil
+	}
+
+	result, err := h.auth.SetupMFA(context.Background(), user.ID)
+	if err != nil {
+		return err
+	}
+
+	colorHeader.Fprintln(h.out, "Enable 2FA")
+	fmt.Fprintln(h.out, "")
+	colorDim.Fprintln(h.out, "  Scan with Google Authenticator, Authy, 1Password, etc.:")
+	fmt.Fprintln(h.out, "")
+
+	qrterminal.GenerateWithConfig(result.ProviderURI, qrterminal.Config{
+		Level:      qrterminal.L,
+		Writer:     h.out,
+		HalfBlocks: true,
+		BlackChar:  qrterminal.BLACK_BLACK,
+		WhiteChar:  qrterminal.WHITE_WHITE,
+	})
+
+	fmt.Fprintln(h.out, "")
+	colorDim.Fprintf(h.out, "  Can't scan? Enter this key manually: ")
+	fmt.Fprintln(h.out, result.Secret)
+	fmt.Fprintln(h.out, "")
+
+	code, err := h.prompter.ReadLine("Enter the 6-digit code from your app to verify: ")
+	if err != nil {
+		return err
+	}
+
+	if err := h.auth.VerifyAndEnableMFA(context.Background(), user.ID, strings.TrimSpace(code)); err != nil {
+		return err
+	}
+
+	success(h.out, "2FA enabled. Your account now requires a TOTP code at every login.")
+	return nil
+}
+
+// disable2fa prompts for a TOTP code and disables MFA on the account.
+func (h *Handler) disable2fa() error {
+	stored, err := h.store.Load()
+	if errors.Is(err, session.ErrNoSession) {
+		warn(h.out, "Not logged in.")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	user, err := h.auth.ValidateSession(context.Background(), stored.Token)
+	if err != nil {
+		h.store.Clear()
+		h.prompter.SetPrompt(DefaultPrompt())
+		warn(h.out, "Session expired — please login again.")
+		return nil
+	}
+
+	code, err := h.prompter.ReadLine("TOTP code: ")
+	if err != nil {
+		return err
+	}
+
+	if err := h.auth.DisableMFA(context.Background(), user.ID, strings.TrimSpace(code)); err != nil {
+		return err
+	}
+
+	success(h.out, "2FA disabled.")
+	return nil
+}
+
 func (h *Handler) mfaSetup(userID string) error {
 	result, err := h.auth.SetupMFA(context.Background(), userID)
 	if err != nil {
@@ -359,17 +452,22 @@ func (h *Handler) mfaDisable(userID, code string) error {
 }
 
 func (h *Handler) help() {
-	colorHeader.Fprintln(h.out, "Available commands:")
+	colorHeader.Fprintln(h.out, "Commands — before login:")
 	fmt.Fprintln(h.out, "")
 	fmt.Fprintln(h.out, "  register [username]        Create a new account")
-	fmt.Fprintln(h.out, "  login [username]           Log in to your account")
-	fmt.Fprintln(h.out, "  logout                     End your current session")
-	fmt.Fprintln(h.out, "  whoami                     Show current session info")
-	fmt.Fprintln(h.out, "  mfa setup                  Generate a TOTP secret")
-	fmt.Fprintln(h.out, "  mfa enable <code>          Activate MFA after setup")
-	fmt.Fprintln(h.out, "  mfa disable <code>         Deactivate MFA")
-	fmt.Fprintln(h.out, "  clear                      Clear the screen")
+	fmt.Fprintln(h.out, "  login [username]           Log in (prompts for TOTP if 2FA is on)")
 	fmt.Fprintln(h.out, "  help                       Show this help")
 	fmt.Fprintln(h.out, "  exit                       Quit")
+	fmt.Fprintln(h.out, "")
+	colorHeader.Fprintln(h.out, "Commands — after login:")
+	fmt.Fprintln(h.out, "")
+	fmt.Fprintln(h.out, "  whoami                     Show current user and session info")
+	fmt.Fprintln(h.out, "  enable-2fa                 Set up and enable TOTP-based 2FA")
+	fmt.Fprintln(h.out, "  disable-2fa                Disable 2FA (requires a valid TOTP code)")
+	fmt.Fprintln(h.out, "  logout                     End your current session")
+	fmt.Fprintln(h.out, "  clear                      Clear the screen")
+	fmt.Fprintln(h.out, "  help                       Show this help")
+	fmt.Fprintln(h.out, "")
+	colorDim.Fprintln(h.out, "  Advanced: mfa setup / mfa enable <code> / mfa disable <code>")
 	fmt.Fprintln(h.out, "")
 }

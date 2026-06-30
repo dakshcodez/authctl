@@ -357,10 +357,63 @@ func TestHandler_Help(t *testing.T) {
 
 	h.Dispatch("help")
 
-	for _, cmd := range []string{"register", "login", "logout", "whoami", "mfa", "clear"} {
+	for _, cmd := range []string{"register", "login", "logout", "whoami", "enable-2fa", "disable-2fa", "clear"} {
 		if !strings.Contains(out.String(), cmd) {
 			t.Errorf("help output missing %q", cmd)
 		}
+	}
+}
+
+func TestHandler_Enable2FA_NotLoggedIn(t *testing.T) {
+	h, out, _, _ := newTestHandler(t, newFakeAuth())
+
+	h.Dispatch("enable-2fa")
+
+	if !strings.Contains(out.String(), "Not logged in") {
+		t.Errorf("expected not-logged-in warning, got: %q", out.String())
+	}
+}
+
+func TestHandler_Disable2FA_NotLoggedIn(t *testing.T) {
+	h, out, _, _ := newTestHandler(t, newFakeAuth())
+
+	h.Dispatch("disable-2fa")
+
+	if !strings.Contains(out.String(), "Not logged in") {
+		t.Errorf("expected not-logged-in warning, got: %q", out.String())
+	}
+}
+
+func TestHandler_Enable2FA_Unavailable(t *testing.T) {
+	auth := newFakeAuth()
+	auth.users["alice"] = &models.User{ID: "u-1", Username: "alice"}
+
+	h, out, prompter, _ := newTestHandler(t, auth)
+	prompter.passwords = []string{"pass"}
+	h.Dispatch("login alice")
+	out.Reset()
+
+	h.Dispatch("enable-2fa")
+
+	if !strings.Contains(out.String(), "MFA is unavailable") {
+		t.Errorf("expected unavailable message, got: %q", out.String())
+	}
+}
+
+func TestHandler_Disable2FA_Unavailable(t *testing.T) {
+	auth := newFakeAuth()
+	auth.users["alice"] = &models.User{ID: "u-1", Username: "alice"}
+
+	h, out, prompter, _ := newTestHandler(t, auth)
+	prompter.passwords = []string{"pass"}
+	h.Dispatch("login alice")
+	out.Reset()
+
+	prompter.lines = []string{"123456"}
+	h.Dispatch("disable-2fa")
+
+	if !strings.Contains(out.String(), "MFA is unavailable") {
+		t.Errorf("expected unavailable message, got: %q", out.String())
 	}
 }
 
