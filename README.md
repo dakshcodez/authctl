@@ -66,7 +66,7 @@ docker compose build
 docker compose run --rm authctl
 ```
 
-The SQLite database is stored in a named Docker volume (`authctl-data`) and persists between runs. To wipe everything and start fresh:
+The SQLite database is stored in a named Docker volume (`authctl-data`) mounted at `/home/authctl/.authctl/`. The default `DB_PATH` resolves to that location, so data persists between runs. To wipe everything and start fresh:
 
 ```sh
 docker compose down -v
@@ -176,7 +176,7 @@ All settings come from environment variables. Create a `.env` file in the projec
 |-----------------------|----------------------------|--------------------------------------------------|
 | `APP_ENV`             | `development`              | `development` or `production`                    |
 | `LOG_LEVEL`           | `info`                     | `debug`, `info`, `warn`, `error`                 |
-| `DB_PATH`             | `./data/authctl.db`        | Path to the SQLite database file                 |
+| `DB_PATH`             | `~/.authctl/authctl.db`    | Path to the SQLite database file. When using Docker, must be inside `/home/authctl/.authctl/` (the named volume mount) |
 | `SESSION_TIMEOUT`     | `24h`                      | How long a session stays valid                   |
 | `MAX_LOGIN_ATTEMPTS`  | `5`                        | Failed attempts before the account is locked     |
 | `LOCKOUT_DURATION`    | `15m`                      | How long the lockout lasts                       |
