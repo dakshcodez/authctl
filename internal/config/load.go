@@ -3,6 +3,8 @@ package config
 import (
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -20,7 +22,11 @@ func Load() (*Config, error) {
 
 	cfg.LogLevel = getString("LOG_LEVEL", "info")
 
-	cfg.DBPath = getString("DB_PATH", "./data/authctl.db")
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	cfg.DBPath = getString("DB_PATH", filepath.Join(homeDir, ".authctl", "authctl.db"))
 
 	cfg.SessionTimeout, err = getDuration(
 		"SESSION_TIMEOUT",
