@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -142,7 +143,7 @@ func newTestHandler(t *testing.T, auth service.AuthService) (*cli.Handler, *byte
 	prompter := &fakePrompter{}
 	store := session.NewFileStore(filepath.Join(t.TempDir(), "session"))
 	cfg := &config.Config{AppEnv: "test", LogLevel: "error"}
-	log := logger.New(cfg)
+	log := logger.New(cfg, io.Discard)
 	_ = log // handler doesn't take logger; auth service does
 	h := cli.NewHandler(auth, store, out, prompter)
 	return h, out, prompter, store

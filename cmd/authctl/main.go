@@ -26,9 +26,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := logger.New(cfg)
+	// Create readline before the logger so all output goes through readline's
+	// terminal-aware writer, which redraws the prompt after any log line prints.
+	readline, err := rl.NewEx(&rl.Config{
+		Prompt:          cli.DefaultPrompt(),
+		AutoComplete:    buildCompleter(),
+		InterruptPrompt: "^C",
+		EOFPrompt:       "exit",
+	})
+	if err != nil {
+		slog.Error("init readline", "error", err)
+		os.Exit(1)
+	}
+	defer readline.Close()
 
-	cli.PrintStartupStatus(os.Stdout, "Initializing...")
+	rlOut := readline.Stdout()
+
+	log := logger.New(cfg, rlOut)
+
+	cli.PrintStartupStatus(rlOut, "Initializing...")
 
 	db, err := database.Connect(cfg, log)
 	if err != nil {
@@ -36,13 +52,13 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-	cli.PrintStartupStatus(os.Stdout, "Database connected.")
+	cli.PrintStartupStatus(rlOut, "Database connected.")
 
 	if err := database.Migrate(db, migrations.FS, log); err != nil {
 		log.Error("run migrations", "error", err)
 		os.Exit(1)
 	}
-	cli.PrintStartupStatus(os.Stdout, "Database migrations applied.")
+	cli.PrintStartupStatus(rlOut, "Database migrations applied.")
 
 	users := repository.NewUserRepository(db)
 	sessions := repository.NewSessionRepository(db)
@@ -55,28 +71,15 @@ func main() {
 	}
 	store := session.NewFileStore(sessionPath)
 
-	historyFile := filepath.Join(filepath.Dir(sessionPath), "history")
-
-	readline, err := rl.NewEx(&rl.Config{
-		Prompt:          cli.DefaultPrompt(),
-		HistoryFile:     historyFile,
-		AutoComplete:    buildCompleter(),
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
-	})
-	if err != nil {
-		log.Error("init readline", "error", err)
-		os.Exit(1)
-	}
-	defer readline.Close()
+	readline.SetHistoryPath(filepath.Join(filepath.Dir(sessionPath), "history"))
 
 	prompter := cli.NewReadlinePrompter(readline)
-	handler := cli.NewHandler(auth, store, os.Stdout, prompter)
+	handler := cli.NewHandler(auth, store, rlOut, prompter)
 
 	// Sync prompt to any session persisted from a previous run.
 	handler.Init()
 
-	cli.PrintReady(os.Stdout)
+	cli.PrintReady(rlOut)
 
 	shell := cli.NewShellFromReadline(readline, handler)
 	if err := shell.Run(); err != nil {

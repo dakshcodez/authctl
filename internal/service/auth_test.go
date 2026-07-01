@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"io"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ func newTestService(t *testing.T) (service.AuthService, *fakeUserRepo, *fakeSess
 		AppEnv:           "test",
 		LogLevel:         "error",
 	}
-	log := logger.New(cfg)
+	log := logger.New(cfg, io.Discard)
 	users := newFakeUserRepo()
 	sessions := newFakeSessionRepo()
 	svc := service.NewAuthService(users, sessions, cfg, log)

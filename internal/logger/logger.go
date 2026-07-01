@@ -1,8 +1,8 @@
 package logger
 
 import (
+	"io"
 	"log/slog"
-	"os"
 
 	"github.com/dakshcodez/authctl/internal/config"
 )
@@ -11,7 +11,7 @@ type Logger struct {
 	*slog.Logger
 }
 
-func New(cfg *config.Config) *Logger {
+func New(cfg *config.Config, w io.Writer) *Logger {
 	var level slog.Level
 
 	switch cfg.LogLevel {
@@ -32,9 +32,9 @@ func New(cfg *config.Config) *Logger {
 	var handler slog.Handler
 
 	if cfg.AppEnv == "production" {
-		handler = slog.NewJSONHandler(os.Stdout, opts)
+		handler = slog.NewJSONHandler(w, opts)
 	} else {
-		handler = slog.NewTextHandler(os.Stdout, opts)
+		handler = slog.NewTextHandler(w, opts)
 	}
 
 	return &Logger{
